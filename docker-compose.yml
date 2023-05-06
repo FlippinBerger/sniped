@@ -1,0 +1,36 @@
+version: "3"
+services:
+  server:
+    container_name: "sniped-server-c"
+    env_file: .env
+    build: ./server
+    # environment:
+    #   DATABASE_URL: postgres://admin:pass@postgres:5432/djdb?sslmode=disable
+    ports:
+      - "8000:8000"
+    depends_on:
+      - pg
+    volumes:
+      - ./server:/app/:z
+      # - ./web-client/build:/client/build:z
+  pg:
+    image: "postgres"
+    container_name: "sniped-postgres-c"
+    # port on host : port in Docker
+    ports:
+      - "5432:5432"
+    env_file:
+      - ./server/.env
+    volumes:
+      - ./pg/db_data:/var/lib/postgresql/data:z
+  web:
+    container_name: "sniped-web-c"
+    build: ./web
+    env_file: .env
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    # volumes:
+    # - ./web-client/build:/client/build:z
+    # - ./web-client/src:/client/src:z

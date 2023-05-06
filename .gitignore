@@ -1,0 +1,8 @@
+.env
+
+**/debug/
+**/target/
+
+**/*.rs.bk
+
+
