@@ -1,10 +1,10 @@
+use reqwest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use reqwest;
 
-// API URLs 
+// API URLs
 const TOP_GAMES_URL: &str = "https://api.twitch.tv/helix/games/top";
 const TOKEN_URL: &str = "https://id.twitch.tv/oauth2/token";
 const GAME_URL: &str = "https://api.twitch.tv/helix/games?id=";
@@ -21,7 +21,7 @@ fn read_required_env_var(s: &str) -> String {
     let res = env::var(s);
     match res {
         Ok(s) => s,
-        Err(e) => panic!("couldn't get {} with err: {}", s, e)
+        Err(e) => panic!("couldn't get {} with err: {}", s, e),
     }
 }
 
@@ -35,14 +35,14 @@ pub async fn setup() -> Result<Config, Box<dyn Error>> {
     map.insert("grant_type", "client_credentials");
 
     let client = reqwest::Client::new();
-    let res = client.post(TOKEN_URL)
-        .json(&map)
-        .send()
-        .await?;
+    let res = client.post(TOKEN_URL).json(&map).send().await?;
     let token: AccessToken = res.json().await?;
     println!("{:?}", token);
 
-    Ok(Config {token, client_id: client_id.to_string()})
+    Ok(Config {
+        token,
+        client_id: client_id.to_string(),
+    })
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -62,7 +62,8 @@ struct GamesResponse {
 
 pub async fn get_top_games(conf: &Config) -> Result<Vec<Game>, Box<dyn Error>> {
     let client = reqwest::Client::new();
-    let req = client.request(reqwest::Method::GET, TOP_GAMES_URL)
+    let req = client
+        .request(reqwest::Method::GET, TOP_GAMES_URL)
         .header("Client-Id", conf.client_id.clone())
         .bearer_auth(conf.token.access_token.clone());
 
@@ -72,10 +73,10 @@ pub async fn get_top_games(conf: &Config) -> Result<Vec<Game>, Box<dyn Error>> {
 }
 
 fn url_for_game<'a>(base: &str, game_id: usize) -> String {
-   let mut s = base.to_owned();
-   s.push_str(&game_id.to_string());
+    let mut s = base.to_owned();
+    s.push_str(&game_id.to_string());
 
-   s
+    s
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -83,13 +84,17 @@ struct GameResponse {
     data: Vec<Game>,
 }
 
-pub async fn get_streams_for_game(conf: &Config, game_id: usize) -> Result<GameStreams, Box<dyn Error>> {
+pub async fn get_streams_for_game(
+    conf: &Config,
+    game_id: usize,
+) -> Result<GameStreams, Box<dyn Error>> {
     let client = reqwest::Client::new();
 
     let url = url_for_game(GAME_URL, game_id);
     println!("url for game is {}", url);
 
-    let req = client.request(reqwest::Method::GET, url)
+    let req = client
+        .request(reqwest::Method::GET, url)
         .header("Client-Id", conf.client_id.clone())
         .bearer_auth(conf.token.access_token.clone());
 
@@ -107,7 +112,7 @@ pub async fn get_streams_for_game(conf: &Config, game_id: usize) -> Result<GameS
 
     let mut rv = GameStreams {
         game: res.data.remove(0),
-        streams: vec![]
+        streams: vec![],
     };
 
     println!("building req to get streams");
@@ -115,7 +120,8 @@ pub async fn get_streams_for_game(conf: &Config, game_id: usize) -> Result<GameS
     let url = url_for_game(STREAMS_URL, game_id);
     println!("streams url is {}", url);
 
-    let req = client.request(reqwest::Method::GET, url)
+    let req = client
+        .request(reqwest::Method::GET, url)
         .header("Client-Id", conf.client_id.clone())
         .bearer_auth(conf.token.access_token.clone());
 
@@ -126,6 +132,23 @@ pub async fn get_streams_for_game(conf: &Config, game_id: usize) -> Result<GameS
     rv.streams = res.data;
 
     Ok(rv)
+}
+
+pub async fn search(conf: &Config, query: String) -> Result<Vec<Game>, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "https://api.twitch.tv/helix/search/categories?query={}",
+        query
+    );
+
+    let req = client
+        .request(reqwest::Method::GET, url)
+        .header("Client-Id", conf.client_id.clone())
+        .bearer_auth(conf.token.access_token.clone());
+
+    let res: GamesResponse = req.send().await?.json().await?;
+    Ok(res.data)
 }
 
 #[derive(Deserialize, Debug)]
@@ -150,7 +173,7 @@ pub struct GameStreams {
 #[derive(Deserialize, Debug, Serialize)]
 pub struct Stream {
     pub id: String,
-    pub user_id: String, 
+    pub user_id: String,
     pub user_login: String,
     pub user_name: String,
     pub game_id: String,

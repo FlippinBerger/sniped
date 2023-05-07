@@ -49,6 +49,19 @@ impl Service {
 
         Err("couldn't get game streams".into())
     }
+
+    pub async fn search_games(&self, query: String) -> Result<Vec<Game>, Box<dyn Error>> {
+        if let Some(ttv_conf) = &self.ttv_config {
+            let games = ttv::search(ttv_conf, query)
+                .await?
+                .into_iter()
+                .map(|game| Game::from(game))
+                .collect();
+            return Ok(games);
+        }
+
+        Err("search failed".into())
+    }
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -111,31 +124,6 @@ pub struct Stream {
     pub started_at: String,
     pub stream_url: String,
 }
-
-// #[derive(Deserialize, Debug, Serialize)]
-// pub struct OldStream {
-//     origin: Origin,
-//     // game: Game,
-//     live_url: String,
-//     pub id: String,
-//     pub user_id: String,
-//     pub user_login: String,
-//     pub user_name: String,
-//     pub game_id: String,
-//     pub game_name: String,
-
-//     #[serde(rename = "type")]
-//     pub ty: String,
-
-//     pub title: String,
-//     pub tags: Vec<String>,
-//     pub viewer_count: usize,
-//     pub started_at: String,
-//     pub language: String,
-//     pub thumbnail_url: String,
-//     pub tag_ids: Vec<String>,
-//     pub is_mature: bool,
-// }
 
 impl From<ttv::Stream> for Stream {
     fn from(stream: ttv::Stream) -> Self {
