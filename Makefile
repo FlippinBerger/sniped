@@ -20,7 +20,7 @@ restart-server:
 	docker-compose rm -f server
 	docker rmi sniped-server
 	docker-compose build --pull --no-cache server
-	docker-compose start server
+	docker-compose up -d server
 
 .PHONY: web-up
 web-up:
@@ -31,11 +31,11 @@ web-up:
 # maybe I should've tested with this one since it's faster... idiot
 .PHONY: restart-web
 restart-web:
-	docker-compose down 
+	docker-compose stop web
+	docker-compose rm -f web
 	docker rmi sniped-web
 	docker-compose build --pull --no-cache web
-	docker-compose start web
-
+	docker-compose up -d web
 
 .PHONY: down
 down:
@@ -44,7 +44,3 @@ down:
 .PHONY: up
 up:
 	docker-compose up -d
-
-.PHONY: fup
-	docker-compose build --pull --no-cache
-	docker-compose up
