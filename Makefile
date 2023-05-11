@@ -44,3 +44,7 @@ down:
 .PHONY: up
 up:
 	docker-compose up -d
+
+.PHONY: test-with-output
+test-with-output:
+	cargo test --manifest-path ./server/Cargo.toml -- --nocapture

@@ -10,9 +10,9 @@ const TOKEN_URL: &str = "https://id.twitch.tv/oauth2/token";
 const GAME_URL: &str = "https://api.twitch.tv/helix/games?id=";
 const STREAMS_URL: &str = "https://api.twitch.tv/helix/streams?game_id=";
 
-pub struct Config {
-    pub token: AccessToken,
-    pub client_id: String,
+struct Config {
+    token: AccessToken,
+    client_id: String,
 }
 
 // helper function to read in an env var or panic if it doesn't exist
@@ -25,24 +25,99 @@ fn read_required_env_var(s: &str) -> String {
     }
 }
 
-pub async fn setup() -> Result<Config, Box<dyn Error>> {
-    let client_id = read_required_env_var("TTV_CLIENT_ID");
-    let client_secret = read_required_env_var("TTV_CLIENT_SECRET");
+pub struct Service {
+    config: Config,
+}
 
-    let mut map = HashMap::new();
-    map.insert("client_id", &client_id[..]);
-    map.insert("client_secret", &client_secret[..]);
-    map.insert("grant_type", "client_credentials");
+impl Service {
+    pub async fn build() -> Result<Service, Box<dyn Error>> {
+        let client_id = read_required_env_var("TTV_CLIENT_ID");
+        let client_secret = read_required_env_var("TTV_CLIENT_SECRET");
 
-    let client = reqwest::Client::new();
-    let res = client.post(TOKEN_URL).json(&map).send().await?;
-    let token: AccessToken = res.json().await?;
-    println!("{:?}", token);
+        let mut map = HashMap::new();
+        map.insert("client_id", &client_id[..]);
+        map.insert("client_secret", &client_secret[..]);
+        map.insert("grant_type", "client_credentials");
 
-    Ok(Config {
-        token,
-        client_id: client_id.to_string(),
-    })
+        let client = reqwest::Client::new();
+        let res = client.post(TOKEN_URL).json(&map).send().await?;
+        let token: AccessToken = res.json().await?;
+        println!("{:?}", token);
+
+        Ok(Service {
+            config: Config {
+                token,
+                client_id: client_id.to_string(),
+            },
+        })
+    }
+
+    pub async fn get_top_games(&self) -> Result<Vec<Game>, Box<dyn Error>> {
+        let client = reqwest::Client::new();
+        let req = client
+            .request(reqwest::Method::GET, TOP_GAMES_URL)
+            .header("Client-Id", self.config.client_id.clone())
+            .bearer_auth(self.config.token.access_token.clone());
+
+        let res: GamesResponse = req.send().await?.json().await?;
+
+        Ok(res.data)
+    }
+
+    pub async fn search(&self, query: String) -> Result<Vec<Game>, Box<dyn Error>> {
+        let client = reqwest::Client::new();
+
+        let url = format!(
+            "https://api.twitch.tv/helix/search/categories?query={}",
+            query
+        );
+
+        let req = client
+            .request(reqwest::Method::GET, url)
+            .header("Client-Id", self.config.client_id.clone())
+            .bearer_auth(self.config.token.access_token.clone());
+
+        let res: GamesResponse = req.send().await?.json().await?;
+        Ok(res.data)
+    }
+
+    pub async fn get_streams_for_game(
+        &self,
+        game_id: usize,
+    ) -> Result<GameStreams, Box<dyn Error>> {
+        let client = reqwest::Client::new();
+
+        let url = url_for_game(GAME_URL, game_id);
+        println!("url for game is {}", url);
+
+        let req = client
+            .request(reqwest::Method::GET, url)
+            .header("Client-Id", self.config.client_id.clone())
+            .bearer_auth(self.config.token.access_token.clone());
+
+        let mut res: GameResponse = req.send().await?.json().await?;
+
+        if res.data.len() != 1 {
+            return Err("List of games should be of length 1".into());
+        }
+
+        let mut rv = GameStreams {
+            game: res.data.remove(0),
+            streams: vec![],
+        };
+
+        let url = url_for_game(STREAMS_URL, game_id);
+
+        let req = client
+            .request(reqwest::Method::GET, url)
+            .header("Client-Id", self.config.client_id.clone())
+            .bearer_auth(self.config.token.access_token.clone());
+
+        let res: StreamsForGameResponse = req.send().await?.json().await?;
+        rv.streams = res.data;
+
+        Ok(rv)
+    }
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -51,6 +126,7 @@ pub struct Game {
     pub name: String,
     // 240x360 is a great starting point for size on these
     pub box_art_url: String,
+    #[serde(default)]
     igdb_id: String,
 }
 
@@ -58,18 +134,6 @@ pub struct Game {
 struct GamesResponse {
     data: Vec<Game>,
     pagination: Pagination,
-}
-
-pub async fn get_top_games(conf: &Config) -> Result<Vec<Game>, Box<dyn Error>> {
-    let client = reqwest::Client::new();
-    let req = client
-        .request(reqwest::Method::GET, TOP_GAMES_URL)
-        .header("Client-Id", conf.client_id.clone())
-        .bearer_auth(conf.token.access_token.clone());
-
-    let res: GamesResponse = req.send().await?.json().await?;
-
-    Ok(res.data)
 }
 
 fn url_for_game<'a>(base: &str, game_id: usize) -> String {
@@ -82,73 +146,6 @@ fn url_for_game<'a>(base: &str, game_id: usize) -> String {
 #[derive(Deserialize, Debug, Serialize)]
 struct GameResponse {
     data: Vec<Game>,
-}
-
-pub async fn get_streams_for_game(
-    conf: &Config,
-    game_id: usize,
-) -> Result<GameStreams, Box<dyn Error>> {
-    let client = reqwest::Client::new();
-
-    let url = url_for_game(GAME_URL, game_id);
-    println!("url for game is {}", url);
-
-    let req = client
-        .request(reqwest::Method::GET, url)
-        .header("Client-Id", conf.client_id.clone())
-        .bearer_auth(conf.token.access_token.clone());
-
-    println!("built the req");
-
-    let mut res: GameResponse = req.send().await?.json().await?;
-
-    println!("got the GameResponse");
-
-    if res.data.len() != 1 {
-        return Err("List of games should be of length 1".into());
-    }
-
-    println!("after len check");
-
-    let mut rv = GameStreams {
-        game: res.data.remove(0),
-        streams: vec![],
-    };
-
-    println!("building req to get streams");
-
-    let url = url_for_game(STREAMS_URL, game_id);
-    println!("streams url is {}", url);
-
-    let req = client
-        .request(reqwest::Method::GET, url)
-        .header("Client-Id", conf.client_id.clone())
-        .bearer_auth(conf.token.access_token.clone());
-
-    println!("about to send req for streams");
-
-    let res: StreamsForGameResponse = req.send().await?.json().await?;
-    println!("got res for streams");
-    rv.streams = res.data;
-
-    Ok(rv)
-}
-
-pub async fn search(conf: &Config, query: String) -> Result<Vec<Game>, Box<dyn Error>> {
-    let client = reqwest::Client::new();
-
-    let url = format!(
-        "https://api.twitch.tv/helix/search/categories?query={}",
-        query
-    );
-
-    let req = client
-        .request(reqwest::Method::GET, url)
-        .header("Client-Id", conf.client_id.clone())
-        .bearer_auth(conf.token.access_token.clone());
-
-    let res: GamesResponse = req.send().await?.json().await?;
-    Ok(res.data)
 }
 
 #[derive(Deserialize, Debug)]
@@ -194,5 +191,6 @@ pub struct Stream {
 
 #[derive(Deserialize, Debug, Serialize)]
 struct Pagination {
+    #[serde(default)]
     cursor: String,
 }

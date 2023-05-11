@@ -1,66 +1,60 @@
 use crate::twitch::ttv;
+use crate::youtube::yt;
 
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 
 // Service is used to house everything needed to call the external services
 pub struct Service {
-    ttv_config: Option<ttv::Config>,
+    ttv: ttv::Service,
+    yt: yt::Service,
 }
 
 impl Service {
     pub async fn build() -> Result<Service, Box<dyn Error>> {
-        let ttv_config = ttv::setup().await?;
+        let ttv = ttv::Service::build().await?;
+        let yt = yt::Service::build();
 
-        Ok(Service {
-            ttv_config: Some(ttv_config),
-        })
+        Ok(Service { ttv, yt })
     }
 
     pub async fn get_top_games(&self) -> Result<Vec<Game>, Box<dyn Error>> {
         let games: Vec<Game>;
 
-        if let Some(ttv_conf) = &self.ttv_config {
-            games = ttv::get_top_games(ttv_conf)
-                .await?
-                .into_iter()
-                .map(|game| Game::from(game))
-                .collect();
-            return Ok(games);
-        }
+        games = self
+            .ttv
+            .get_top_games()
+            .await?
+            .into_iter()
+            .map(|game| Game::from(game))
+            .collect();
 
-        // if let Some(yt_conf) = &self.yt_config {
-        //     let yt_games = yt::get_top_games(yt_conf).await?.into_iter().map(|game| Game::from(game)).collect();
-        //     games.append(yt_games);
-        //     return Ok(games);
-        // }
-
-        Err("couldnt get twitch games".into())
+        Ok(games)
     }
 
-    pub async fn get_game(&self, id: usize) -> Result<GameStreams, Box<dyn Error>> {
-        if let Some(ttv_conf) = &self.ttv_config {
-            let ttv_game_streams = ttv::get_streams_for_game(ttv_conf, id).await;
+    pub async fn get_streams_for_game(&self, id: usize) -> Result<GameStreams, Box<dyn Error>> {
+        let res = self.ttv.get_streams_for_game(id).await;
 
-            if let Ok(x) = ttv_game_streams {
-                return Ok(GameStreams::from(x));
-            }
-        }
+        let Ok(ttv_game_streams) = res else {
+            return Err("couldn't get game streams".into())
+        };
 
-        Err("couldn't get game streams".into())
+        let rv = GameStreams::from(ttv_game_streams);
+
+        let res = self.yt.get_streams_for_game(rv.game.name.clone());
+
+        Ok(rv)
     }
 
     pub async fn search_games(&self, query: String) -> Result<Vec<Game>, Box<dyn Error>> {
-        if let Some(ttv_conf) = &self.ttv_config {
-            let games = ttv::search(ttv_conf, query)
-                .await?
-                .into_iter()
-                .map(|game| Game::from(game))
-                .collect();
-            return Ok(games);
-        }
-
-        Err("search failed".into())
+        let games = self
+            .ttv
+            .search(query)
+            .await?
+            .into_iter()
+            .map(|game| Game::from(game))
+            .collect();
+        Ok(games)
     }
 }
 

@@ -59,7 +59,7 @@ async fn get_game(
     service: &State<streams::Service>,
     id: usize,
 ) -> Option<Json<streams::GameStreams>> {
-    let game_streams = service.get_game(id).await;
+    let game_streams = service.get_streams_for_game(id).await;
 
     if let Ok(gs) = game_streams {
         return Some(Json(gs));
@@ -74,6 +74,9 @@ async fn search(service: &State<streams::Service>, query: String) -> Json<Vec<st
     let games = service.search_games(query).await;
     match games {
         Ok(games) => Json(games),
-        Err(_) => Json(vec![]),
+        Err(err) => {
+            println!("err: {:?}", err);
+            Json(vec![])
+        }
     }
 }
