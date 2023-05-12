@@ -1,53 +1,68 @@
 use crate::twitch::ttv;
+use crate::youtube::yt;
 
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 
 // Service is used to house everything needed to call the external services
 pub struct Service {
-    ttv_config: Option<ttv::Config>,
+    ttv: ttv::Service,
+    yt: yt::Service,
 }
 
 impl Service {
     pub async fn build() -> Result<Service, Box<dyn Error>> {
-        let ttv_config = ttv::setup().await?;
+        let ttv = ttv::Service::build().await?;
+        let yt = yt::Service::build();
 
-        Ok(Service {
-            ttv_config: Some(ttv_config),
-        })
+        Ok(Service { ttv, yt })
     }
 
     pub async fn get_top_games(&self) -> Result<Vec<Game>, Box<dyn Error>> {
         let games: Vec<Game>;
 
-        if let Some(ttv_conf) = &self.ttv_config {
-            games = ttv::get_top_games(ttv_conf)
-                .await?
-                .into_iter()
-                .map(|game| Game::from(game))
-                .collect();
-            return Ok(games);
-        }
+        games = self
+            .ttv
+            .get_top_games()
+            .await?
+            .into_iter()
+            .map(|game| Game::from(game))
+            .collect();
 
-        // if let Some(yt_conf) = &self.yt_config {
-        //     let yt_games = yt::get_top_games(yt_conf).await?.into_iter().map(|game| Game::from(game)).collect();
-        //     games.append(yt_games);
-        //     return Ok(games);
-        // }
-
-        Err("couldnt get twitch games".into())
+        Ok(games)
     }
 
-    pub async fn get_game(&self, id: usize) -> Result<GameStreams, Box<dyn Error>> {
-        if let Some(ttv_conf) = &self.ttv_config {
-            let ttv_game_streams = ttv::get_streams_for_game(ttv_conf, id).await;
+    pub async fn get_streams_for_game(&self, id: usize) -> Result<GameStreams, Box<dyn Error>> {
+        let ttv_game_streams = self.ttv.get_streams_for_game(id).await?;
+        println!("got game streams from twitch {:?}", ttv_game_streams);
 
-            if let Ok(x) = ttv_game_streams {
-                return Ok(GameStreams::from(x));
+        let mut rv = GameStreams::from(ttv_game_streams);
+
+        let yt_res = self.yt.get_streams_for_game(rv.game.name.clone()).await;
+
+        match yt_res {
+            Ok(yt_streams) => {
+                println!("before adding to rv: {:?}", rv);
+                rv.add_yt_streams(yt_streams);
+                println!("after adding to rv: {:?}", rv);
+                Ok(rv)
+            }
+            Err(e) => {
+                println!("error fetching yt streams: {:?}", e);
+                Ok(rv)
             }
         }
+    }
 
-        Err("couldn't get game streams".into())
+    pub async fn search_games(&self, query: String) -> Result<Vec<Game>, Box<dyn Error>> {
+        let games = self
+            .ttv
+            .search(query)
+            .await?
+            .into_iter()
+            .map(|game| Game::from(game))
+            .collect();
+        Ok(games)
     }
 }
 
@@ -69,6 +84,17 @@ impl From<ttv::GameStreams> for GameStreams {
             game: Game::from(game_streams.game),
             streams,
         }
+    }
+}
+
+impl GameStreams {
+    fn add_yt_streams(&mut self, v: Vec<yt::Stream>) {
+        let mut streams: Vec<Stream> = v.into_iter().map(|stream| Stream::from(stream)).collect();
+        self.streams.append(&mut streams);
+
+        // sort the streams by viewer count in descending order
+        self.streams
+            .sort_unstable_by(|a, b| b.viewer_count.cmp(&a.viewer_count));
     }
 }
 
@@ -112,31 +138,6 @@ pub struct Stream {
     pub stream_url: String,
 }
 
-// #[derive(Deserialize, Debug, Serialize)]
-// pub struct OldStream {
-//     origin: Origin,
-//     // game: Game,
-//     live_url: String,
-//     pub id: String,
-//     pub user_id: String,
-//     pub user_login: String,
-//     pub user_name: String,
-//     pub game_id: String,
-//     pub game_name: String,
-
-//     #[serde(rename = "type")]
-//     pub ty: String,
-
-//     pub title: String,
-//     pub tags: Vec<String>,
-//     pub viewer_count: usize,
-//     pub started_at: String,
-//     pub language: String,
-//     pub thumbnail_url: String,
-//     pub tag_ids: Vec<String>,
-//     pub is_mature: bool,
-// }
-
 impl From<ttv::Stream> for Stream {
     fn from(stream: ttv::Stream) -> Self {
         Self {
@@ -151,6 +152,23 @@ impl From<ttv::Stream> for Stream {
             language: stream.language,
             thumbnail_url: stream.thumbnail_url,
             stream_url: format!("https://twitch.tv/{}", stream.user_name),
+        }
+    }
+}
+
+impl From<yt::Stream> for Stream {
+    fn from(stream: yt::Stream) -> Self {
+        Self {
+            origin: Origin::YT,
+            user_name: stream.user_name,
+            game_name: stream.game_name,
+            title: stream.title,
+            tags: stream.tags,
+            viewer_count: stream.viewer_count,
+            started_at: stream.started_at,
+            language: stream.language,
+            thumbnail_url: stream.thumbnail_url,
+            stream_url: stream.stream_url,
         }
     }
 }

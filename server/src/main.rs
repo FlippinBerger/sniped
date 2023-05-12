@@ -1,8 +1,8 @@
 use std::process;
 
-use rocket::{get, routes, launch};
 use rocket::serde::json::Json;
 use rocket::State;
+use rocket::{get, launch, routes};
 use rocket_cors::Cors;
 
 use rusty::streams;
@@ -15,7 +15,9 @@ fn index() -> &'static str {
 fn get_cors() -> Cors {
     rocket_cors::CorsOptions {
         ..Default::default()
-    }.to_cors().unwrap()
+    }
+    .to_cors()
+    .unwrap()
 }
 
 #[launch]
@@ -31,6 +33,7 @@ async fn rocket() -> _ {
                 .mount("/", routes![index])
                 .mount("/", routes![get_top_games])
                 .mount("/", routes![get_game])
+                .mount("/", routes![search])
                 .attach(get_cors())
         }
         Err(err) => {
@@ -47,18 +50,33 @@ async fn get_top_games(service: &State<streams::Service>) -> Json<Vec<streams::G
 
     match games {
         Ok(games) => Json(games),
-        Err(_) => Json(vec![])
+        Err(_) => Json(vec![]),
     }
 }
 
 #[get("/game/<id>")]
-async fn get_game(service: &State<streams::Service>, id: usize) -> Option<Json<streams::GameStreams>> {
-    let game_streams = service.get_game(id).await;
+async fn get_game(
+    service: &State<streams::Service>,
+    id: usize,
+) -> Option<Json<streams::GameStreams>> {
+    let game_streams = service.get_streams_for_game(id).await;
 
     if let Ok(gs) = game_streams {
-        return Some(Json(gs))
+        return Some(Json(gs));
     }
 
     println!("couldn't get game streams from twitch");
     None
+}
+
+#[get("/search/<query>")]
+async fn search(service: &State<streams::Service>, query: String) -> Json<Vec<streams::Game>> {
+    let games = service.search_games(query).await;
+    match games {
+        Ok(games) => Json(games),
+        Err(err) => {
+            println!("err: {:?}", err);
+            Json(vec![])
+        }
+    }
 }
