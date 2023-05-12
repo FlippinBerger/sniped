@@ -72,12 +72,17 @@ impl Service {
             query
         );
 
+        println!("search url: {}", url);
+
         let req = client
             .request(reqwest::Method::GET, url)
             .header("Client-Id", self.config.client_id.clone())
             .bearer_auth(self.config.token.access_token.clone());
 
+        println!("after building req");
+
         let res: GamesResponse = req.send().await?.json().await?;
+        println!("after res with res: {:?}", res);
         Ok(res.data)
     }
 

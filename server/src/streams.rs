@@ -33,17 +33,25 @@ impl Service {
     }
 
     pub async fn get_streams_for_game(&self, id: usize) -> Result<GameStreams, Box<dyn Error>> {
-        let res = self.ttv.get_streams_for_game(id).await;
+        let ttv_game_streams = self.ttv.get_streams_for_game(id).await?;
+        println!("got game streams from twitch {:?}", ttv_game_streams);
 
-        let Ok(ttv_game_streams) = res else {
-            return Err("couldn't get game streams".into())
-        };
+        let mut rv = GameStreams::from(ttv_game_streams);
 
-        let rv = GameStreams::from(ttv_game_streams);
+        let yt_res = self.yt.get_streams_for_game(rv.game.name.clone()).await;
 
-        let res = self.yt.get_streams_for_game(rv.game.name.clone());
-
-        Ok(rv)
+        match yt_res {
+            Ok(yt_streams) => {
+                println!("before adding to rv: {:?}", rv);
+                rv.add_yt_streams(yt_streams);
+                println!("after adding to rv: {:?}", rv);
+                Ok(rv)
+            }
+            Err(e) => {
+                println!("error fetching yt streams: {:?}", e);
+                Ok(rv)
+            }
+        }
     }
 
     pub async fn search_games(&self, query: String) -> Result<Vec<Game>, Box<dyn Error>> {
@@ -76,6 +84,17 @@ impl From<ttv::GameStreams> for GameStreams {
             game: Game::from(game_streams.game),
             streams,
         }
+    }
+}
+
+impl GameStreams {
+    fn add_yt_streams(&mut self, v: Vec<yt::Stream>) {
+        let mut streams: Vec<Stream> = v.into_iter().map(|stream| Stream::from(stream)).collect();
+        self.streams.append(&mut streams);
+
+        // sort the streams by viewer count in descending order
+        self.streams
+            .sort_unstable_by(|a, b| b.viewer_count.cmp(&a.viewer_count));
     }
 }
 
@@ -133,6 +152,23 @@ impl From<ttv::Stream> for Stream {
             language: stream.language,
             thumbnail_url: stream.thumbnail_url,
             stream_url: format!("https://twitch.tv/{}", stream.user_name),
+        }
+    }
+}
+
+impl From<yt::Stream> for Stream {
+    fn from(stream: yt::Stream) -> Self {
+        Self {
+            origin: Origin::YT,
+            user_name: stream.user_name,
+            game_name: stream.game_name,
+            title: stream.title,
+            tags: stream.tags,
+            viewer_count: stream.viewer_count,
+            started_at: stream.started_at,
+            language: stream.language,
+            thumbnail_url: stream.thumbnail_url,
+            stream_url: stream.stream_url,
         }
     }
 }

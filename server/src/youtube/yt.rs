@@ -35,8 +35,11 @@ impl Service {
 
     pub async fn get_streams_for_game(&self, game: String) -> Result<Vec<Stream>, Box<dyn Error>> {
         let encoded_game = str::replace(&game, " ", "+");
+        println!("encoded game: {}", encoded_game);
         let full_html = fetch_html(encoded_game).await?;
         let video_ids = get_video_ids_from_html(&full_html, 20);
+
+        println!("video ids {:?}", video_ids);
 
         let streams = self.get_streams(video_ids, game).await?;
         Ok(streams)
@@ -50,13 +53,23 @@ impl Service {
         let ids = ids.join(",");
         let encoded_ids = encode(&ids);
 
-        let url = format!("https://youtube.googleapis.com/youtube/v3/videos?part=snippet%2CliveStreamingDetails&id={} Ks-_Mh1QhMc%2Cc0KYU2j0TM4%2CeIho2S0ZahI&key={}",
+        let url = format!("https://youtube.googleapis.com/youtube/v3/videos?part=snippet%2CliveStreamingDetails&id={}&key={}",
             encoded_ids, self.config.api_key);
 
-        let client = reqwest::Client::new();
-        let req = client.request(reqwest::Method::GET, url);
+        println!("youtube url: {}", url);
 
-        let res: VideoListResponse = req.send().await?.json().await?;
+        let client = reqwest::Client::new();
+        let req = client
+            .request(reqwest::Method::GET, url)
+            .header("Accept", "application/json");
+
+        let fres = req.send().await?;
+        // println!("fres: {:?}", fres.text().await?);
+
+        // return Ok(vec![]);
+
+        let res: VideoListResponse = fres.json().await?;
+        // println!("res: {:?}", res);
 
         let streams: Vec<Stream> = res
             .items
@@ -75,6 +88,7 @@ impl Service {
                 started_at: video.liveStreamingDetails.actualStartTime,
                 language: video.snippet.defaultLanguage,
                 thumbnail_url: video.snippet.thumbnails.high.url,
+                stream_url: format!("https://www.youtube.com/watch?v={}", video.id),
             })
             .collect();
 
@@ -87,13 +101,13 @@ pub struct Stream {
     pub user_id: String,
     pub user_name: String,
     pub game_name: String,
-
     pub title: String,
     pub tags: Vec<String>,
     pub viewer_count: usize,
     pub started_at: String,
     pub language: String,
     pub thumbnail_url: String,
+    pub stream_url: String,
 }
 
 async fn fetch_html(game: String) -> Result<String, Box<dyn Error>> {
@@ -129,7 +143,6 @@ fn get_video_ids_from_html(full_html: &str, count: usize) -> Vec<String> {
     };
 
     workable_slice = &workable_slice[i..];
-    println!("{}", workable_slice);
 
     let mut video_ids: Vec<String> = Vec::new();
     let mut id: &str;
@@ -229,7 +242,14 @@ struct Video {
 #[derive(Deserialize, Debug, Serialize)]
 struct LiveStreamingDetails {
     actualStartTime: String,
+
+    #[serde(default)]
+    scheduledStartTime: String,
+
+    #[serde(default)]
     concurrentViewers: String,
+
+    #[serde(default)]
     activeLiveChatId: String,
 }
 
@@ -241,11 +261,19 @@ struct VideoSnippet {
     description: String,
     thumbnails: Thumbnails,
     channelTitle: String,
+
+    #[serde(default)]
     tags: Vec<String>,
+
     categoryId: String,
     liveBroadcastContent: String,
+
+    #[serde(default)]
     defaultLanguage: String,
-    localized: String,
+
+    localized: Localized,
+
+    #[serde(default)]
     defaultAudioLanguage: String,
 }
 
@@ -255,16 +283,20 @@ struct Localized {
     description: String,
 }
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Default, Serialize)]
 struct Thumbnails {
     default: Thumbnail,
     medium: Thumbnail,
     high: Thumbnail,
+
+    #[serde(default)]
     standard: Thumbnail,
+
+    #[serde(default)]
     maxres: Thumbnail,
 }
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Default, Serialize)]
 struct Thumbnail {
     url: String,
     width: usize,
