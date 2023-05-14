@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from 'react-query';
-import { Link } from 'react-router-dom';
 import debounce from 'lodash.debounce';
 import { css } from '@emotion/react';
-import { Card, CardActionArea, CardContent, CardMedia, TextField, Typography } from '@mui/material';
+import { TextField } from '@mui/material';
 
 import apiClient from './api/client';
 import { Game } from './types';
-import { getImageUrl } from './utils';
 import GameCarousel from './GameCarousel';
 
 const Home = () => {
@@ -20,7 +18,6 @@ const Home = () => {
   },
     {
       onSuccess: (res) => {
-        console.log("games: ", res.data);
         setGames(res.data);
       },
       onError: (err) => {
@@ -67,26 +64,6 @@ const Home = () => {
       )}
       <h2>Popular games:</h2>
       <GameCarousel games={games} />
-      {/* <div css={gameList}> */}
-      {/*   {games.map((game: Game) => ( */}
-      {/*     <div key={game.id} css={gameCard}> */}
-      {/*       <Card sx={{ maxWidth: 240 }}> */}
-      {/*         <CardActionArea component={Link} to={`/game/${game.ttv_id}`}> */}
-      {/*           <CardMedia */}
-      {/*             sx={{ height: 360 }} */}
-      {/*             image={getImageUrl(game.box_art_url, 240, 360)} */}
-      {/*             title={game.name} */}
-      {/*           /> */}
-      {/*           <CardContent css={cardBackground}> */}
-      {/*             <Typography variant='h4'> */}
-      {/*               {game.name} */}
-      {/*             </Typography> */}
-      {/*           </CardContent> */}
-      {/*         </CardActionArea> */}
-      {/*       </Card> */}
-      {/*     </div> */}
-      {/*   ))} */}
-      {/* </div> */}
     </div>
   )
 };

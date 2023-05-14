@@ -24,7 +24,6 @@ pub struct Service {
 }
 
 impl Service {
-    // pub async fn get_streams_for_game(game: String) -> Result<Vec<Game>, Box<dyn Error>> {}
     pub fn build() -> Service {
         let api_key = env::var("YT_API_KEY").unwrap();
 
@@ -35,11 +34,8 @@ impl Service {
 
     pub async fn get_streams_for_game(&self, game: String) -> Result<Vec<Stream>, Box<dyn Error>> {
         let encoded_game = str::replace(&game, " ", "+");
-        println!("encoded game: {}", encoded_game);
         let full_html = fetch_html(encoded_game).await?;
         let video_ids = get_video_ids_from_html(&full_html, 20);
-
-        println!("video ids {:?}", video_ids);
 
         let streams = self.get_streams(video_ids, game).await?;
         Ok(streams)
@@ -56,20 +52,12 @@ impl Service {
         let url = format!("https://youtube.googleapis.com/youtube/v3/videos?part=snippet%2CliveStreamingDetails&id={}&key={}",
             encoded_ids, self.config.api_key);
 
-        println!("youtube url: {}", url);
-
         let client = reqwest::Client::new();
         let req = client
             .request(reqwest::Method::GET, url)
             .header("Accept", "application/json");
 
-        let fres = req.send().await?;
-        // println!("fres: {:?}", fres.text().await?);
-
-        // return Ok(vec![]);
-
-        let res: VideoListResponse = fres.json().await?;
-        // println!("res: {:?}", res);
+        let res: VideoListResponse = req.send().await?.json().await?;
 
         let streams: Vec<Stream> = res
             .items
@@ -175,18 +163,6 @@ fn get_video_ids_from_html(full_html: &str, count: usize) -> Vec<String> {
     }
 
     video_ids
-}
-
-fn get_game_list_from_html() -> Vec<Game> {
-    vec![Game {
-        title: "".to_owned(),
-        user_name: "".to_owned(),
-        thumbnail_url: "".to_owned(),
-        viewer_count: 0.to_owned(),
-        game_name: "".to_owned(),
-        started_at: "".to_owned(),
-        stream_url: "".to_owned(),
-    }]
 }
 
 // Note for me, can add tokio::test and then test async fns :)
